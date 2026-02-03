@@ -17,7 +17,6 @@ QUIZ_DATA = [
 ]
 
 st.title("💪 筋トレ部位当てクイズ！")
-st.write("種目に対して、主に鍛えられる筋肉を選択してください。結果はデータベースに保存されます。")
 
 # --- セッション状態の初期化 ---
 if 'current_q' not in st.session_state:
@@ -26,10 +25,12 @@ if 'score' not in st.session_state:
     st.session_state.score = 0
 if 'user_name' not in st.session_state:
     st.session_state.user_name = ""
+if 'answered' not in st.session_state:
+    st.session_state.answered = False
 
-# ユーザー名入力（最初の1回だけ）
+# ユーザー名入力
 if not st.session_state.user_name:
-    name = st.text_input("あなたの名前を入力してください（ランキング用）:")
+    name = st.text_input("あなたの名前を入力してください:")
     if st.button("クイズ開始"):
         if name:
             st.session_state.user_name = name
@@ -41,60 +42,54 @@ if not st.session_state.user_name:
 # --- クイズ本編 ---
 if st.session_state.current_q < len(QUIZ_DATA):
     q = QUIZ_DATA[st.session_state.current_q]
-    
     st.subheader(f"Q{st.session_state.current_q + 1}: {q['exercise']} で主に鍛えられるのは？")
     
+    # フォーム開始
     with st.form(key=f"q_form_{st.session_state.current_q}"):
         choice = st.radio("選択肢:", q["options"])
         submit_button = st.form_submit_button(label="回答する")
         
         if submit_button:
             is_correct = (choice == q["answer"])
-            
-            # Supabaseへログを送信
-            data = {
-                "user_name": st.session_state.user_name,
-                "exercise_name": q["exercise"],
-                "is_correct": is_correct
-            }
+            # Supabaseへ保存を試みる
             try:
+                data = {"user_name": st.session_state.user_name, "exercise_name": q["exercise"], "is_correct": is_correct}
                 supabase.table("quiz_logs").insert(data).execute()
             except Exception as e:
-                st.error(f"データの保存に失敗しました: {e}")
-
+                st.error(f"DB保存エラー: {e}")
+            
             if is_correct:
                 st.success("正解！✨")
                 st.session_state.score += 1
             else:
                 st.error(f"残念！正解は {q['answer']} でした。")
-            
+            st.session_state.answered = True
+
+    # ★ここが重要：st.button を フォームの外に出しました
+    if st.session_state.answered:
+        if st.button("次の問題へ"):
             st.session_state.current_q += 1
-            st.button("次の問題へ")
+            st.session_state.answered = False
+            st.rerun()
 
 else:
-    # --- 全問終了後のリザルト ---
+    # クイズ終了後のリザルト
     st.balloons()
     st.header("クイズ終了！")
     st.write(f"{st.session_state.user_name}さんのスコア: {st.session_state.score} / {len(QUIZ_DATA)}")
     
-    if st.button("もう一度挑戦する"):
+    if st.button("最初からやり直す"):
         st.session_state.current_q = 0
         st.session_state.score = 0
+        st.session_state.answered = False
         st.rerun()
 
-    # --- 保存されたデータの表示 (Supabaseから取得) ---
+    # 履歴表示
     st.divider()
-    st.subheader("📊 みんなの学習履歴 (Supabaseから取得)")
-    
+    st.subheader("📊 最新の回答履歴")
     try:
-        response = supabase.table("quiz_logs").select("*").order("created_at", desc=True).limit(10).execute()
-        if response.data:
-            df = pd.DataFrame(response.data)
-            # 見やすく加工
-            df = df[['user_name', 'exercise_name', 'is_correct', 'created_at']]
-            df.columns = ['ユーザー', '種目', '正解？', '日時']
-            st.table(df)
-        else:
-            st.info("まだ履歴がありません。")
-    except Exception as e:
-        st.error(f"データの取得に失敗しました: {e}")
+        res = supabase.table("quiz_logs").select("*").order("created_at", desc=True).limit(5).execute()
+        if res.data:
+            st.table(pd.DataFrame(res.data)[['user_name', 'exercise_name', 'is_correct']])
+    except:
+        st.info("まだデータがありません。")
