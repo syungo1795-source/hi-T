@@ -3,12 +3,16 @@ from supabase import create_client, Client
 import pandas as pd
 import random
 
-# --- Supabaseの初期設定 ---
-url: str = st.secrets["SUPABASE_URL"]
-key: str = st.secrets["SUPABASE_KEY"]
-supabase: Client = create_client(url, key)
+# --- Supabase接続設定 (注意1 & 注意3) ---
+try:
+    url: str = st.secrets["SUPABASE_URL"]
+    key: str = st.secrets["SUPABASE_KEY"]
+    supabase: Client = create_client(url, key)
+except Exception as e:
+    st.error("Secretsの設定（URLまたはKey）が見つかりません。設定を確認してください。")
+    st.stop()
 
-# --- クイズのデータ（全30問） ---
+# --- クイズデータ (全30問) ---
 TOTAL_QUIZ_DATA = [
     {"exercise": "ベンチプレス", "options": ["大胸筋", "広背筋", "大腿四頭筋", "三角筋"], "answer": "大胸筋"},
     {"exercise": "スクワット", "options": ["大腿四頭筋", "腹直筋", "上腕三頭筋", "広背筋"], "answer": "大腿四頭筋"},
@@ -42,7 +46,7 @@ TOTAL_QUIZ_DATA = [
     {"exercise": "グルートブリッジ", "options": ["大臀筋", "腹直筋", "上腕三頭筋", "大胸筋"], "answer": "大臀筋"},
 ]
 
-st.title("💪 究極！筋トレ部位当てクイズ")
+st.title("💪 筋トレ部位当てクイズ (Supabase版)")
 
 # --- セッション状態の初期化 ---
 if 'user_name' not in st.session_state:
@@ -55,13 +59,12 @@ if 'score' not in st.session_state:
     st.session_state.score = 0
 if 'answered' not in st.session_state:
     st.session_state.answered = False
-# 今回のアップデート：現在の問題の「シャッフルされた選択肢」を保存する場所
-if 'current_options' not in st.session_state:
-    st.session_state.current_options = []
+if 'shuffled_options' not in st.session_state:
+    st.session_state.shuffled_options = []
 
-# ユーザー名入力
+# --- ユーザー名入力 ---
 if not st.session_state.user_name:
-    name = st.text_input("挑戦者の名前を入力:")
+    name = st.text_input("あなたの名前を入力してください:")
     if st.button("クイズ開始"):
         if name:
             st.session_state.user_name = name
@@ -76,68 +79,66 @@ quiz_items = st.session_state.quiz_pool
 if st.session_state.current_q < len(quiz_items):
     q = quiz_items[st.session_state.current_q]
     
-    # 選択肢をシャッフル（まだ今問の選択肢が決まっていない場合のみ実行）
-    if not st.session_state.current_options:
-        shuffled = random.sample(q["options"], len(q["options"]))
-        st.session_state.current_options = shuffled
+    # 選択肢のシャッフル（問題ごとに1回だけ実行）
+    if not st.session_state.shuffled_options:
+        opts = list(q["options"])
+        random.shuffle(opts)
+        st.session_state.shuffled_options = opts
 
-    # 進捗表示
-    st.progress((st.session_state.current_q) / len(quiz_items))
-    st.write(f"問題 {st.session_state.current_q + 1} / {len(quiz_items)}")
-
-    st.subheader(f"Q: **{q['exercise']}** で主に鍛えられるのは？")
+    st.progress(st.session_state.current_q / len(quiz_items))
+    st.subheader(f"Q{st.session_state.current_q + 1}: **{q['exercise']}** の主働筋は？")
     
-    with st.form(key=f"q_form_{st.session_state.current_q}"):
-        # 保存しておいたシャッフル済み選択肢を表示
-        choice = st.radio("正しい筋肉はどれ？", st.session_state.current_options)
-        submit_button = st.form_submit_button(label="回答を送信")
+    with st.form(key=f"q_{st.session_state.current_q}"):
+        choice = st.radio("選択肢:", st.session_state.shuffled_options)
+        submit = st.form_submit_button("回答する")
         
-        if submit_button:
+        if submit:
             is_correct = (choice == q["answer"])
-            # Supabaseへ保存
+            # Supabaseへ保存 (注意3)
             try:
-                data = {"user_name": st.session_state.user_name, "exercise_name": q["exercise"], "is_correct": is_correct}
-                supabase.table("quiz_logs").insert(data).execute()
-            except:
-                pass
-            
+                supabase.table("quiz_logs").insert({
+                    "user_name": st.session_state.user_name,
+                    "exercise_name": q["exercise"],
+                    "is_correct": is_correct
+                }).execute()
+            except Exception as e:
+                st.error(f"データの保存に失敗しました: {e}")
+
             if is_correct:
-                st.success("正解！お見事です！✨")
+                st.success("正解！")
                 st.session_state.score += 1
             else:
-                st.error(f"不正解...。正解は **{q['answer']}** でした。")
+                st.error(f"不正解... 正解は【{q['answer']}】でした。")
             st.session_state.answered = True
 
     if st.session_state.answered:
-        if st.button("次の問題へ ➡️"):
+        if st.button("次へ ➡️"):
             st.session_state.current_q += 1
             st.session_state.answered = False
-            # 次の問題のために選択肢をリセット
-            st.session_state.current_options = []
+            st.session_state.shuffled_options = []
             st.rerun()
 
 else:
-    # --- クイズ終了 ---
+    # --- 終了画面 ---
     st.balloons()
-    st.header("🏁 クイズ終了！")
-    st.write(f"{st.session_state.user_name}さんの最終スコア: **{st.session_state.score} / {len(quiz_items)}**")
+    st.header("🏁 全問終了！")
+    st.write(f"スコア: **{st.session_state.score} / 10**")
     
-    if st.button("新しい問題に挑戦する（10問）"):
+    if st.button("別の問題で再挑戦"):
         st.session_state.current_q = 0
         st.session_state.score = 0
-        st.session_state.answered = False
         st.session_state.quiz_pool = random.sample(TOTAL_QUIZ_DATA, 10)
-        st.session_state.current_options = []
+        st.session_state.shuffled_options = []
         st.rerun()
 
-    # 履歴表示
+    # --- 履歴表示 ---
     st.divider()
-    st.subheader("📊 みんなの最新の回答履歴")
+    st.subheader("📊 みんなの回答履歴 (Supabaseからリアルタイム取得)")
     try:
         res = supabase.table("quiz_logs").select("*").order("created_at", desc=True).limit(5).execute()
         if res.data:
             df = pd.DataFrame(res.data)
             df['結果'] = df['is_correct'].apply(lambda x: "✅正解" if x else "❌不正解")
-            st.table(df[['user_name', 'exercise_name', '結果']].rename(columns={'user_name':'名前','exercise_name':'種目'}))
+            st.table(df[['user_name', 'exercise_name', '結果']].rename(columns={'user_name':'ユーザー','exercise_name':'種目'}))
     except:
-        st.info("データの取得に失敗しました。")
+        st.info("履歴の読み込みに失敗しました。")
