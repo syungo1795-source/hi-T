@@ -46,7 +46,7 @@ TOTAL_QUIZ_DATA = [
     {"exercise": "グルートブリッジ", "options": ["大臀筋", "腹直筋", "上腕三頭筋", "大胸筋"], "answer": "大臀筋"},
 ]
 
-st.title("💪 筋トレ部位当てクイズ (Supabase版)")
+st.title("💪 筋トレ部位当てクイズ")
 
 # --- セッション状態の初期化 ---
 if 'user_name' not in st.session_state:
@@ -133,7 +133,7 @@ else:
 
     # --- 履歴表示 ---
     st.divider()
-    st.subheader("📊 みんなの回答履歴 (Supabaseからリアルタイム取得)")
+    st.subheader("📊 みんなの回答履歴")
     try:
         res = supabase.table("quiz_logs").select("*").order("created_at", desc=True).limit(5).execute()
         if res.data:
