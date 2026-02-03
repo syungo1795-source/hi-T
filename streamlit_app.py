@@ -46,7 +46,7 @@ TOTAL_QUIZ_DATA = [
     {"exercise": "グルートブリッジ", "options": ["大臀筋", "腹直筋", "上腕三頭筋", "大胸筋"], "answer": "大臀筋"},
 ]
 
-st.title("💪 筋トレ部位当てクイズ")
+st.title("💪 筋トレ部位当てクイズ「前回の自分よりもプログレッシブオーバーロードしよう！」")
 
 # --- セッション状態の初期化 ---
 if 'user_name' not in st.session_state:
